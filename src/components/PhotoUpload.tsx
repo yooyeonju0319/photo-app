@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Upload, Image, X, Tag, FileText, Camera } from 'lucide-react';
-import { Photo, User } from '../types';
-import { createPhoto } from '../utils/database';
+import { User } from '../types';
+import { uploadPhotoWithMetadata } from '../utils/upload';
 
 interface PhotoUploadProps {
   user: User;
@@ -15,7 +15,7 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({ user, onUploadSuccess }) => {
   const [formData, setFormData] = useState({
     title: '',
     tags: '',
-    description: ''
+    description: '',
   });
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -34,7 +34,7 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({ user, onUploadSuccess }) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    
+
     const files = e.dataTransfer.files;
     if (files && files[0]) {
       handleFileSelect(files[0]);
@@ -62,28 +62,26 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({ user, onUploadSuccess }) => {
 
     setLoading(true);
     try {
-      // Convert file to base64 for storage
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const base64Url = e.target?.result as string;
-        
-        const photo = await createPhoto({
-          uploader: user.username,
-          url: base64Url,
-          title: formData.title,
-          tags: formData.tags,
-          description: formData.description
-        });
+      const success = await uploadPhotoWithMetadata({
+        file: selectedFile,
+        uploader: user.username,
+        title: formData.title,
+        tags: formData.tags,
+        description: formData.description,
+      });
 
-        if (photo) {
-          // Reset form
-          setSelectedFile(null);
-          setPreviewUrl('');
-          setFormData({ title: '', tags: '', description: '' });
-          onUploadSuccess();
-        }
-      };
-      reader.readAsDataURL(selectedFile);
+      if (success) {
+        setSelectedFile(null);
+        setPreviewUrl('');
+        setFormData({ title: '', tags: '', description: '' });
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        onUploadSuccess();
+      } else {
+        alert('사진 업로드 실패');
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      alert('에러가 발생했습니다.');
     } finally {
       setLoading(false);
     }
@@ -107,8 +105,10 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({ user, onUploadSuccess }) => {
         <p className="text-gray-600">당신의 순간을 Lechabo에서 공유해보세요</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="bg-white/80 backdrop-blur-lg rounded-2xl shadow-xl p-6 space-y-6">
-        {/* File Upload Area */}
+      <form
+        onSubmit={handleSubmit}
+        className="bg-white/80 backdrop-blur-lg rounded-2xl shadow-xl p-6 space-y-6"
+      >
         <div
           className={`relative border-2 border-dashed rounded-xl transition-all duration-200 ${
             dragActive
@@ -124,11 +124,7 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({ user, onUploadSuccess }) => {
         >
           {previewUrl ? (
             <div className="relative">
-              <img
-                src={previewUrl}
-                alt="Preview"
-                className="w-full h-64 object-cover rounded-lg"
-              />
+              <img src={previewUrl} alt="Preview" className="w-full h-64 object-cover rounded-lg" />
               <button
                 type="button"
                 onClick={removeSelectedFile}
@@ -140,9 +136,7 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({ user, onUploadSuccess }) => {
           ) : (
             <div className="text-center p-12">
               <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-700 mb-2">
-                사진을 드래그하거나 클릭해서 업로드
-              </h3>
+              <h3 className="text-lg font-semibold text-gray-700 mb-2">사진을 드래그하거나 클릭해서 업로드</h3>
               <p className="text-gray-500 mb-4">JPG, PNG, GIF 파일을 지원합니다</p>
               <label className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-lg hover:from-pink-600 hover:to-purple-700 cursor-pointer transition-all duration-200 transform hover:scale-105">
                 <Image className="w-5 h-5 mr-2" />
@@ -159,7 +153,6 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({ user, onUploadSuccess }) => {
           )}
         </div>
 
-        {/* Form Fields */}
         <div className="space-y-4">
           <div>
             <label className="flex items-center space-x-2 text-sm font-medium text-gray-700 mb-2">
@@ -171,9 +164,9 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({ user, onUploadSuccess }) => {
               name="title"
               value={formData.title}
               onChange={handleInputChange}
-              placeholder="사진의 제목을 입력하세요"
-              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
               required
+              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+              placeholder="사진의 제목을 입력하세요"
             />
           </div>
 
@@ -187,8 +180,8 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({ user, onUploadSuccess }) => {
               name="tags"
               value={formData.tags}
               onChange={handleInputChange}
-              placeholder="태그를 입력하세요 (예: #자연 #여행 #일상)"
-              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
+              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+              placeholder="#자연 #여행"
             />
           </div>
 
@@ -201,24 +194,23 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({ user, onUploadSuccess }) => {
               name="description"
               value={formData.description}
               onChange={handleInputChange}
-              placeholder="사진에 대한 설명을 작성하세요"
               rows={4}
-              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 resize-none"
+              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+              placeholder="사진에 대한 설명을 입력하세요"
             />
           </div>
         </div>
 
-        {/* Submit Button */}
         <button
           type="submit"
           disabled={!selectedFile || !formData.title || loading}
-          className="w-full bg-gradient-to-r from-pink-500 to-purple-600 text-white font-semibold py-3 rounded-lg hover:from-pink-600 hover:to-purple-700 transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:transform-none disabled:cursor-not-allowed shadow-lg"
+          className="w-full bg-gradient-to-r from-pink-500 to-purple-600 text-white font-semibold py-3 rounded-lg hover:from-pink-600 hover:to-purple-700 transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? (
-            <div className="flex items-center justify-center">
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+            <span className="flex justify-center items-center">
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
               업로드 중...
-            </div>
+            </span>
           ) : (
             '사진 업로드'
           )}

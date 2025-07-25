@@ -1,7 +1,7 @@
+import { supabase } from '../lib/supabase';
 import { User, Photo } from '../types';
-import { saveUser, validateUser, recoverUser, findUser, savePhoto, getPhotos, updatePhoto, generateId } from './storage';
 
-// User functions
+// ✅ 회원가입 함수
 export const createUser = async (userData: {
   username: string;
   password: string;
@@ -10,51 +10,110 @@ export const createUser = async (userData: {
 }): Promise<User | null> => {
   try {
     const profilePic = `https://api.dicebear.com/7.x/avataaars/svg?seed=${userData.username}`;
-    
-    const newUser: User = {
-      id: generateId(),
-      username: userData.username,
-      profilePic,
-      question: userData.question,
-      createdAt: new Date().toISOString()
+
+    const { data, error } = await supabase.from('users').insert([
+      {
+        username: userData.username,
+        password: userData.password,
+        question: userData.question,
+        answer: userData.answer,
+        profilepic: profilePic, // ✅ 컬럼명 일치
+      }
+    ]).select().single();
+
+    if (error) {
+      console.error('User creation error:', error.message);
+      return null;
+    }
+
+    return {
+      id: data.id,
+      username: data.username,
+      profilePic: data.profilepic,
+      question: data.question,
+      createdAt: '' // users 테이블에 created_at이 없으므로 빈 값
     };
-
-    saveUser(newUser, userData.password, userData.answer);
-    return newUser;
-  } catch (error) {
-    console.error('Error creating user:', error);
+  } catch (err) {
+    console.error('Unexpected error creating user:', err);
     return null;
   }
 };
 
-export const findUserByUsername = async (username: string): Promise<any | null> => {
-  try {
-    return findUser(username);
-  } catch (error) {
-    console.error('Error finding user:', error);
+// ✅ 사용자 찾기
+export const findUserByUsername = async (username: string): Promise<User | null> => {
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('username', username)
+    .single();
+
+  if (error) {
+    console.error('Error finding user:', error.message);
     return null;
   }
+
+  return {
+    id: data.id,
+    username: data.username,
+    profilePic: data.profilepic,
+    question: data.question,
+    createdAt: ''
+  };
 };
 
-export const validateUserCredentials = async (username: string, password: string): Promise<User | null> => {
-  try {
-    return validateUser(username, password);
-  } catch (error) {
-    console.error('Error validating credentials:', error);
+// ✅ 로그인 정보 검증
+export const validateUserCredentials = async (
+  username: string,
+  password: string
+): Promise<User | null> => {
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('username', username)
+    .eq('password', password)
+    .single();
+
+  if (error) {
+    console.error('Invalid credentials:', error.message);
     return null;
   }
+
+  return {
+    id: data.id,
+    username: data.username,
+    profilePic: data.profilepic,
+    question: data.question,
+    createdAt: ''
+  };
 };
 
-export const recoverUserAccount = async (username: string, answer: string): Promise<User | null> => {
-  try {
-    return recoverUser(username, answer);
-  } catch (error) {
-    console.error('Error recovering account:', error);
+// ✅ 보안 질문 복구
+export const recoverUserAccount = async (
+  username: string,
+  answer: string
+): Promise<User | null> => {
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('username', username)
+    .eq('answer', answer)
+    .single();
+
+  if (error) {
+    console.error('Recovery failed:', error.message);
     return null;
   }
+
+  return {
+    id: data.id,
+    username: data.username,
+    profilePic: data.profilepic,
+    question: data.question,
+    createdAt: ''
+  };
 };
 
-// Photo functions
+// ✅ 사진 생성 (Storage에서 url 받아온 후 DB에 저장)
 export const createPhoto = async (photoData: {
   uploader: string;
   url: string;
@@ -62,47 +121,55 @@ export const createPhoto = async (photoData: {
   tags: string;
   description: string;
 }): Promise<Photo | null> => {
-  try {
-    const newPhoto: Photo = {
-      id: generateId(),
+  const { data, error } = await supabase.from('photos').insert([
+    {
       uploader: photoData.uploader,
       url: photoData.url,
       title: photoData.title,
       tags: photoData.tags,
       description: photoData.description,
       likes: [],
-      createdAt: new Date().toISOString()
-    };
+      created_at: new Date().toISOString()
+    }
+  ]).select().single();
 
-    savePhoto(newPhoto);
-    return newPhoto;
-  } catch (error) {
-    console.error('Error creating photo:', error);
+  if (error) {
+    console.error('Error saving photo:', error.message);
     return null;
   }
+
+  return data;
 };
 
+// ✅ 전체 사진 가져오기
 export const getAllPhotos = async (): Promise<Photo[]> => {
-  try {
-    return getPhotos();
-  } catch (error) {
-    console.error('Error fetching photos:', error);
+  const { data, error } = await supabase
+    .from('photos')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching photos:', error.message);
     return [];
   }
+
+  return data;
 };
 
-export const updatePhotoLikes = async (photoId: string, likes: string[]): Promise<boolean> => {
-  try {
-    const photos = getPhotos();
-    const photo = photos.find(p => p.id === photoId);
-    if (photo) {
-      photo.likes = likes;
-      updatePhoto(photo);
-      return true;
-    }
-    return false;
-  } catch (error) {
-    console.error('Error updating photo likes:', error);
+// ✅ 좋아요 업데이트
+export const updatePhotoLikes = async (
+  photoId: string,
+  likes: string[]
+): Promise<boolean> => {
+  const { error } = await supabase
+    .from('photos')
+    .update({ likes })
+    .eq('id', photoId);
+
+  if (error) {
+    console.error('Error updating likes:', error.message);
     return false;
   }
+
+  return true;
 };
